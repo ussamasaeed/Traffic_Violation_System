@@ -1,0 +1,87 @@
+For create challan table
+
+CREATE TABLE IF NOT EXISTS challan (
+    uid VARCHAR(50),
+    Date DATE,
+    Time TIME,
+    LicensePlate VARCHAR(50),
+    Type VARCHAR(50),
+    speed FLOAT,
+    valiotionType VARCHAR(50)
+);
+
+Trigger to generate challan on insert in information table
+
+DELIMITER $$
+
+CREATE TRIGGER trg_generate_challan
+AFTER INSERT ON information
+FOR EACH ROW
+proc: BEGIN
+    DECLARE avg_speed FLOAT;
+    DECLARE drift_count INT;
+    DECLARE violation_type VARCHAR(50);
+    DECLARE plate VARCHAR(50);
+
+    -- 1. Calculate average speed for this UID
+    SELECT AVG(Speed) INTO avg_speed
+    FROM information
+    WHERE UID = NEW.UID;
+
+    -- 2. Count drifting rows for UID
+    SELECT COUNT(*) INTO drift_count
+    FROM information
+    WHERE UID = NEW.UID AND Driving = 'Drifting';
+
+    -- 3. Determine violation based on speed > 70 and/or drifting
+    SET violation_type = NULL;
+
+    IF avg_speed > 70 AND drift_count > 0 THEN
+        SET violation_type = 'overspeed/drifting';
+    ELSEIF avg_speed > 70 THEN
+        SET violation_type = 'overspeed';
+    ELSEIF drift_count > 0 THEN
+        SET violation_type = 'drifting';
+    END IF;
+
+    -- 4. If no violation → exit trigger
+    IF violation_type IS NULL THEN
+        LEAVE proc;
+    END IF;
+
+    -- 5. Get License Plate (fallback if empty)
+    IF NEW.LicensePlate IS NULL OR NEW.LicensePlate = '' THEN
+        SELECT LicensePlate INTO plate
+        FROM information
+        WHERE UID = NEW.UID 
+          AND LicensePlate IS NOT NULL 
+          AND LicensePlate <> ''
+        ORDER BY Date DESC, Time DESC
+        LIMIT 1;
+    ELSE
+        SET plate = NEW.LicensePlate;
+    END IF;
+
+    -- 6. Avoid duplicate challans for same UID
+    IF NOT EXISTS (SELECT 1 FROM challan WHERE uid = NEW.UID) THEN
+        INSERT INTO challan(uid, Date, Time, LicensePlate, Type, speed, valiotionType)
+        VALUES (
+            NEW.UID,
+            NEW.Date,
+            NEW.Time,
+            plate,
+            NEW.Type,
+            avg_speed,
+            violation_type
+        );
+    END IF;
+
+END$$
+
+DELIMITER ;
+
+Remove triger any table
+DROP TRIGGER IF EXISTS trg_generate_challan;   # trg_generate_challan named of trigger , write qury same table apply trigger.
+
+   
+

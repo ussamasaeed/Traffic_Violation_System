@@ -1,0 +1,5 @@
+cmd as run adminsatator and ip change head node ip in all worker
+
+conda activate yolov11_seg
+set RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER=1
+ray start --address=192.168.0.102:6379 --num-gpus=1 --resources="{\"heavy\":2}"

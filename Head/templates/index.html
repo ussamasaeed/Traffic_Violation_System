@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Camera Interface</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #e6ecf5;
+      margin: 20px;
+    }
+    .container { border: 2px solid #2b4f73; background: #4a6d91; padding: 5px; }
+    .tabs { display: flex; background: #444; padding: 5px; }
+    .tabs button { padding: 8px 15px; margin-right: 5px; border: 1px solid #333; background: #ccc; cursor: pointer; }
+    .tabs button.active { background: #fff; }
+    .tab-content { display: none; background: #ccc; padding: 10px; min-height: 300px; }
+    .tab-content.active { display: block; }
+
+    .cctv-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 15px;
+      padding: 10px;
+    }
+
+    .cctv-item {
+      position: relative;
+      background: #000;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+      transition: transform 0.2s;
+    }
+
+    .cctv-item:hover { transform: scale(1.02); }
+    .cctv-item video { width: 100%; height: 180px; object-fit: cover; background-color: #000; }
+
+    .delete-btn, .stop-btn {
+      position: absolute; top: 8px; right: 8px;
+      background: rgba(255,0,0,0.8);
+      color: white; border: none; border-radius: 4px;
+      cursor: pointer; padding: 3px 8px; font-size: 13px;
+    }
+    .delete-btn:hover { background: red; }
+    .stop-btn { right: 70px; background: orange; }
+    .stop-btn:hover { background: #ffb347; }
+
+    .dropdown { margin-bottom: 10px; }
+    .dropdown button {
+      padding: 8px 12px; background: #0073e6; color: white;
+      border: none; cursor: pointer; border-radius: 4px;
+    }
+    .dropdown-content { display: none; margin-top: 5px; }
+    .dropdown-content button {
+      display: block; width: 100%; margin-top: 5px;
+      background: #555; color: white; border: none;
+      cursor: pointer; padding: 6px 0; border-radius: 4px;
+    }
+    .loading { text-align: center; color: white; font-size: 18px; padding: 20px; }
+
+    /* New styles for chalan list */
+    #chalanList {
+      padding: 10px;
+      background: #fff;
+      border-radius: 8px;
+      max-height: 400px;
+      overflow-y: auto;
+      color: #000;
+    }
+    #chalanList a {
+      display: block;
+      margin: 6px 0;
+      color: #0073e6;
+      text-decoration: none;
+      font-weight: bold;
+    }
+    #chalanList a:hover {
+      text-decoration: underline;
+    }
+
+    /* Progress UI styles */
+    .progress-panel {
+      padding: 12px;
+      background: #fff;
+      border-radius: 8px;
+      margin: 10px 0;
+      color: #000;
+    }
+    .progress-row { margin-bottom: 8px; }
+    .progress-label { font-size: 14px; margin-bottom: 6px; }
+    .progress-bar-bg {
+      background:#e6e6e6;
+      height:18px;
+      border-radius:6px;
+      overflow:hidden;
+    }
+    .progress-bar-fill {
+      height:100%;
+      width:0%;
+      border-radius:6px;
+      background: linear-gradient(90deg,#4caf50,#2e7d32);
+      transition: width 1.5s ease-in-out; /* smooth width change */
+    }
+    .progress-list { max-height: 240px; overflow-y: auto; margin-top: 8px; }
+    .progress-item { padding:6px 0; border-bottom: 1px solid #eee; }
+    .progress-item:last-child { border-bottom: none; }
+    .small-muted { color:#666; font-size:12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="tabs">
+      <button class="tablink active" onclick="openTab(event, 'allcamera')">All Camera</button>
+      <button class="tablink" onclick="openTab(event, 'output')">Output</button>
+      <button class="tablink" onclick="openTab(event, 'chalan')">Chalan</button>
+      <button class="tablink" onclick="openTab(event, 'summary')">Summary</button>
+    </div>
+
+    <!-- Progress Panel (shows cluster progress) -->
+    <div class="progress-panel" id="progressPanel">
+      <div class="progress-row">
+        <div class="progress-label"><strong>Cluster Processing Progress</strong></div>
+        <div class="progress-bar-bg"><div id="clusterProgressFill" class="progress-bar-fill"></div></div>
+        <div id="clusterProgressText" class="small-muted" style="margin-top:6px;">0 / 0 completed</div>
+      </div>
+
+      <div class="progress-row">
+        <div class="progress-label"><strong>Per-file progress</strong></div>
+        <div class="progress-list" id="perFileProgressList">
+          <div class="small-muted">No active jobs</div>
+        </div>
+      </div>
+    </div>
+    <!-- End Progress Panel -->
+
+    <!-- All Camera Tab -->
+    <div id="allcamera" class="tab-content active">
+      <div class="dropdown">
+        <button onclick="toggleDropdown()">Add Video</button>
+        <div class="dropdown-content" id="dropdownMenu">
+          <button onclick="addVideo('harddrive')">From Hard Drive</button>
+          <button onclick="addVideo('external')">From External Camera</button>
+        </div>
+      </div>
+      <input type="file" id="fileInput" accept="video/*" style="display:none" onchange="handleFile(event)" />
+      <div class="cctv-grid" id="cctvGrid"></div>
+    </div>
+
+    <!-- Output Tab -->
+    <div id="output" class="tab-content">
+      <h3>Processed Output Videos</h3>
+      <div id="loadingOutput" class="loading" style="display:none;">Loading processed videos...</div>
+      <div class="cctv-grid" id="outputGrid"></div>
+    </div>
+
+    <!-- Chalan Tab -->
+    <div id="chalan" class="tab-content">
+      <h3>Chalan Page</h3>
+      <div id="chalanList">
+        <p>Loading challans...</p>
+      </div>
+    </div>
+
+    <!-- Summary Tab -->
+    <div id="summary" class="tab-content">
+      <h3>Summary Page</h3>
+      <iframe
+        src="http://localhost:3000/public-dashboards/14fe6be8c30b4fb193deb7dea3b378b7"
+        width="100%"
+        height="1000px"
+        frameborder="0"
+        style="border-radius: 10px;"
+      ></iframe>
+    </div>
+
+  </div>
+
+  <script>
+    function openTab(evt, tabName) {
+      document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
+      document.getElementById(tabName).classList.add("active");
+      document.querySelectorAll(".tablink").forEach(b => b.classList.remove("active"));
+      evt.currentTarget.classList.add("active");
+
+      if (tabName === "output") loadOutputVideos();
+      if (tabName === "allcamera") loadInputVideos();
+      if (tabName === "chalan") loadChalans();
+    }
+
+    function toggleDropdown() {
+      let menu = document.getElementById("dropdownMenu");
+      menu.style.display = menu.style.display === "block" ? "none" : "block";
+    }
+
+    function addVideo(source) {
+      if (source === "harddrive") document.getElementById("fileInput").click();
+      else if (source === "external") startExternalCamera();
+      document.getElementById("dropdownMenu").style.display = "none";
+    }
+
+    function handleFile(event) {
+      let file = event.target.files[0];
+      if (!file) return alert("No video selected.");
+
+      let formData = new FormData();
+      formData.append("file", file);
+
+      fetch("/upload", { method: "POST", body: formData })
+        .then(res => res.json())
+        .then(data => {
+          alert(data.message);
+          loadInputVideos();
+          updateProgress(); // immediately refresh progress after upload
+        })
+        .catch(err => alert("Error: " + err));
+    }
+
+    function loadInputVideos() {
+      fetch("/list_input_videos")
+        .then(res => res.json())
+        .then(data => {
+          let grid = document.getElementById("cctvGrid");
+          grid.innerHTML = "";
+          if (data.videos && data.videos.length > 0) {
+            data.videos.forEach(file => {
+              let div = document.createElement("div");
+              div.className = "cctv-item";
+
+              let video = document.createElement("video");
+              video.src = `/input_videos/${file}`;
+              video.controls = true;
+
+              let delBtn = document.createElement("button");
+              delBtn.innerText = "Delete";
+              delBtn.className = "delete-btn";
+              delBtn.onclick = () => {
+                fetch("/delete_input_video", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ filename: file })
+                })
+                .then(r => r.json())
+                .then(d => { if (d.status === "success") div.remove(); });
+              };
+
+              div.appendChild(video);
+              div.appendChild(delBtn);
+              grid.appendChild(div);
+            });
+          } else grid.innerHTML = "<p>No input videos found.</p>";
+        });
+    }
+
+    function loadOutputVideos() {
+      document.getElementById("loadingOutput").style.display = "block";
+      fetch("/list_output_videos")
+        .then(res => res.json())
+        .then(data => {
+          let grid = document.getElementById("outputGrid");
+          grid.innerHTML = "";
+          document.getElementById("loadingOutput").style.display = "none";
+          if (data.videos && data.videos.length > 0) {
+            data.videos.forEach(file => {
+              let div = document.createElement("div");
+              div.className = "cctv-item";
+              let video = document.createElement("video");
+              video.setAttribute("controls", "true");
+              video.setAttribute("width", "100%");
+              video.setAttribute("preload", "metadata");
+              video.innerHTML = `<source src="/output_videos/${file}" type="video/mp4">Your browser does not support HTML5 video.`;
+              video.type = "video/mp4";
+              video.setAttribute("preload", "metadata");
+              let delBtn = document.createElement("button");
+              delBtn.innerText = "Delete";
+              delBtn.className = "delete-btn";
+              delBtn.onclick = () => {
+                fetch("/delete_output_video", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ filename: file })
+                })
+                .then(r => r.json())
+                .then(d => { if (d.status === "success") div.remove(); });
+              };
+              div.appendChild(video);
+              div.appendChild(delBtn);
+              grid.appendChild(div);
+            });
+          } else grid.innerHTML = "<p>No processed videos found.</p>";
+        });
+    }
+
+    function loadChalans() {
+      const chalanDiv = document.getElementById("chalanList");
+      chalanDiv.innerHTML = "<p>Loading challans...</p>";
+      fetch("/list_chalans")
+        .then(res => res.json())
+        .then(data => {
+          if (data.chalans && data.chalans.length > 0) {
+            chalanDiv.innerHTML = "";
+            data.chalans.forEach(file => {
+              let a = document.createElement("a");
+              a.href = `/chalans/${file}`;
+              a.target = "_blank";
+              a.textContent = file;
+              chalanDiv.appendChild(a);
+            });
+          } else {
+            chalanDiv.innerHTML = "<p>No challans found.</p>";
+          }
+        })
+        .catch(() => {
+          chalanDiv.innerHTML = "<p>Error loading challans.</p>";
+        });
+    }
+
+    // -------------------------
+    // Progress polling / rendering
+    // -------------------------
+    function updateProgress() {
+      fetch("/progress")
+        .then(res => res.json())
+        .then(data => {
+          if (!data || Object.keys(data).length === 0) {
+            document.getElementById("clusterProgressFill").style.width = "0%";
+            document.getElementById("clusterProgressText").innerText = "0 / 0 completed";
+            document.getElementById("perFileProgressList").innerHTML = "<div class='small-muted'>No active jobs</div>";
+            return;
+          }
+
+          let totalJobs = Object.keys(data).length;
+          let completedJobs = 0;
+          let listHtml = "";
+
+          Object.keys(data).forEach(filename => {
+            let pct = Number(data[filename]) || 0;
+            if (pct >= 100) completedJobs += 1;
+
+            listHtml += `<div class="progress-item">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                  <div style="flex:1; margin-right:10px; font-weight:600;">${filename}</div>
+                  <div style="width:60px; text-align:right;">${pct}%</div>
+                </div>
+                <div class="progress-bar-bg" style="margin-top:6px;">
+                  <div class="progress-bar-fill" style="width:${pct}%"></div>
+                </div>
+              </div>`;
+          });
+
+          let overallPercent = Math.round((completedJobs / totalJobs) * 100);
+
+          document.getElementById("clusterProgressFill").style.width = overallPercent + "%";
+          document.getElementById("clusterProgressText").innerText = `${completedJobs} / ${totalJobs} completed (${overallPercent}%)`;
+          document.getElementById("perFileProgressList").innerHTML = listHtml;
+        })
+        .catch(err => {
+          // fail silently
+        });
+    }
+
+    setInterval(updateProgress, 2000);
+    window.onload = () => { loadInputVideos(); updateProgress(); };
+  </script>
+</body>
+</html>
